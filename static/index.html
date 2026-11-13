@@ -137,6 +137,7 @@
       <nav class="tabs" id="recommendSubTabs">
         <button class="tab tab--active" data-subtab="rec-smart">智能推荐</button>
         <button class="tab" data-subtab="rec-rules">规则歌单</button>
+        <button class="tab" data-subtab="rec-skip">切歌补位</button>
         <button class="tab" data-subtab="rec-auto">自动刷新</button>
       </nav>
 
@@ -160,6 +161,50 @@
             <div class="toolbar-end" style="margin-top:12px;">
               <button class="btn-outlined" id="btnRegenRecommend">换一批</button>
               <button class="btn-filled" id="btnApplyRecommend">生成歌单</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 排除歌单：推荐时跳过指定歌单内的歌曲 -->
+        <section class="card" style="margin-top:16px;">
+          <div class="card-header">排除歌单</div>
+          <div class="card-body">
+            <p class="form-desc">推荐（随便听听 / 免切歌精选等）会跳过以下歌单内的歌曲。适合把儿童歌曲、特定场景歌单等排除在外，勾选后立即生效。</p>
+            <div class="form-group" id="excludePlaylistList"><span class="form-desc">加载中…</span></div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- 切歌补位：快速切歌后挑不同风格歌曲插入播放队列 -->
+      <div id="subtab-rec-skip" class="subtab-content">
+        <section class="card">
+          <div class="card-header">切歌补位</div>
+          <div class="card-body">
+            <p class="form-desc">快速切歌（播放没几秒就切）后，自动挑一首不同风格的歌插到「正在播放的队列」当前歌曲之后。异步处理，不阻断切歌；AI 未响应会自动回退规则挑选。</p>
+            <div class="form-group">
+              <span class="form-desc" id="siClientStatus">检测客户端桥接…</span>
+            </div>
+            <div class="form-group">
+              <label class="md-checkbox"><input type="checkbox" id="siEnabled"> 启用切歌补位</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="siCount">每次插入数量（1-5）</label>
+              <input type="number" id="siCount" class="text-field" min="1" max="5" value="1">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="siQuick">快速切歌阈值（秒）：播放少于该时长才算快速切歌，0 表示不过滤</label>
+              <input type="number" id="siQuick" class="text-field" min="0" value="60">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="siDebounce">连切防抖（秒）：间隔内只响应一次</label>
+              <input type="number" id="siDebounce" class="text-field" min="1" value="10">
+            </div>
+            <div class="form-group">
+              <label class="md-checkbox"><input type="checkbox" id="siUseAi"> 用 AI 挑不同风格（失败自动回退规则挑选）</label>
+            </div>
+            <div class="toolbar-end">
+              <button class="btn-filled" id="btnSaveSkipInsert">保存</button>
             </div>
           </div>
         </section>
@@ -306,6 +351,55 @@
           </div>
         </div>
       </section>
+
+        <!-- 新歌同步：每天定时从洛雪音源榜单拉新歌入歌单 -->
+        <section class="card" style="margin-top:16px;">
+          <div class="card-header">新歌同步</div>
+          <div class="card-body">
+            <p class="form-desc">每天定时从洛雪音源插件榜单（新歌榜/飙升榜）拉取新歌，过滤已存在、说唱榜与儿歌关键词后加入指定歌单。定时在插件内运行（与推送/备份同一机制）。</p>
+            <div class="form-group">
+              <label class="md-checkbox"><input type="checkbox" id="snEnabled"> 启用每日自动同步</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="snLimit">每天最多入库数量</label>
+              <input type="number" id="snLimit" class="text-field" min="1" max="50" value="10">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="snPlaylist">目标歌单（单选）</label>
+              <select id="snPlaylist" class="text-field"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="snHour">同步时间（时:分，24 小时制）</label>
+              <div style="display:flex;gap:8px;">
+                <input type="number" id="snHour" class="text-field" min="0" max="23" value="9" style="width:70px;">
+                <span style="line-height:32px;">:</span>
+                <input type="number" id="snMinute" class="text-field" min="0" max="59" value="0" style="width:70px;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">榜单（多选，默认新歌榜+飙升榜）</label>
+              <div id="snBoardsList" style="display:flex;flex-wrap:wrap;gap:6px 14px;"><span class="form-desc">加载中…</span></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">排除类型（可自定义）</label>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <label class="md-checkbox"><input type="checkbox" id="snExcludeRap"> 说唱榜 + 说唱关键词（说唱/嘻哈不要）</label>
+                <label class="md-checkbox"><input type="checkbox" id="snExcludeKids"> 儿歌关键词（儿歌/童谣/摇篮曲不要）</label>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="form-desc" style="white-space:nowrap;">自定义关键词（逗号分隔，命中标题即排除）：</span>
+                  <input type="text" id="snExcludeKeywords" class="text-field" placeholder="例如：DJ,翻唱,电音">
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <span class="form-desc" id="snStatus"></span>
+            </div>
+            <div class="toolbar-end" style="gap:8px;">
+              <button class="btn-outlined" id="btnSyncNow">立即同步</button>
+              <button class="btn-filled" id="btnSaveSyncNew">保存</button>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -512,6 +606,13 @@
             <div class="form-group">
               <label class="form-label" for="aiModelInput">模型名</label>
               <input type="text" id="aiModelInput" class="text-field" placeholder="例如 deepseek-chat">
+            </div>
+            <div class="form-group">
+              <label class="md-checkbox">
+                <input type="checkbox" id="aiDisableThinkingCheck">
+                <span>禁用推理/思考（发送 thinking:{type:'disabled'}）</span>
+              </label>
+              <p class="form-desc">推理模型（如 sensenova-6.8-flash-lite、deepseek-reasoner、qwen3 思考模式）的思考过程会吃掉 max_tokens 预算导致返回空，建议勾选。非思考模型勾选后若网关拒绝该参数，会自动去掉重试一次，不会报错。</p>
             </div>
             <div class="toolbar-end">
               <button class="btn-outlined" id="btnTestAi">测试连接</button>

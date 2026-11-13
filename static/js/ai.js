@@ -20,6 +20,7 @@ export async function loadAiSettings() {
     document.getElementById('aiBaseUrlInput').value = c.baseUrl || '';
     document.getElementById('aiApiKeyInput').value = c.apiKey || '';
     document.getElementById('aiModelInput').value = c.model || '';
+    document.getElementById('aiDisableThinkingCheck').checked = c.disableThinking !== false;
   } catch (e) {
     // 配置加载失败不阻断页面
   }
@@ -34,6 +35,7 @@ async function saveAiSettings() {
       baseUrl: document.getElementById('aiBaseUrlInput').value.trim(),
       apiKey: document.getElementById('aiApiKeyInput').value.trim(),
       model: document.getElementById('aiModelInput').value.trim(),
+      disableThinking: document.getElementById('aiDisableThinkingCheck').checked,
     });
     if (!resp.success) throw new Error(resp.error || '保存失败');
     aiConfigured = !!resp.data.configured;

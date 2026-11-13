@@ -71,6 +71,230 @@ async function applyRecommend() {
   }
 }
 
+// ── 切歌补位 ──────────────────────────────────────────────────────────────────
+
+let skipInsertLoaded = false;
+
+/** 加载"切歌补位"配置到表单 */
+export async function loadSkipInsert() {
+  const box = document.getElementById('siEnabled');
+  if (!box) return;
+  skipInsertLoaded = true;
+  try {
+    const resp = await apiGet('/api/skipinsert/config');
+    if (!resp.success) throw new Error(resp.error || '加载失败');
+    const c = resp.data.config || {};
+    document.getElementById('siEnabled').checked = !!c.enabled;
+    document.getElementById('siCount').value = c.count ?? 1;
+    document.getElementById('siQuick').value = c.quickSkipSec ?? 60;
+    document.getElementById('siDebounce').value = c.debounceSec ?? 10;
+    document.getElementById('siUseAi').checked = !!c.useAi;
+  } catch (e) {
+    showToast('切歌补位配置加载失败：' + String(e.message || e), false);
+  }
+}
+
+/** 保存"切歌补位"配置 */
+async function saveSkipInsert() {
+  const btn = document.getElementById('btnSaveSkipInsert');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const payload = {
+      enabled: document.getElementById('siEnabled').checked,
+      count: Number(document.getElementById('siCount').value) || 1,
+      quickSkipSec: Number(document.getElementById('siQuick').value) || 0,
+      debounceSec: Number(document.getElementById('siDebounce').value) || 10,
+      useAi: document.getElementById('siUseAi').checked,
+    };
+    const resp = await apiPost('/api/skipinsert/config', payload);
+    if (resp.success) showToast('切歌补位配置已保存');
+    else showToast('保存失败：' + String(resp.error || ''), false);
+  } catch (e) {
+    showToast('保存失败：' + String(e.message || e), false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** 初始化切歌补位卡片事件 */
+export function initSkipInsert() {
+  const btn = document.getElementById('btnSaveSkipInsert');
+  if (btn) btn.addEventListener('click', saveSkipInsert);
+}
+
+// ── 新歌同步 ──────────────────────────────────────────────────────────────────
+
+let syncNewLoaded = false;
+
+/** 加载"新歌同步"配置 */
+export async function loadSyncNew() {
+  if (!document.getElementById('snEnabled')) return;
+  syncNewLoaded = true;
+  try {
+    // 先填目标歌单下拉框
+    const plResp = await apiGet('/api/syncnew/playlists');
+    const select = document.getElementById('snPlaylist');
+    if (select && plResp.success) {
+      const playlists = (plResp.data && plResp.data.playlists) || [];
+      select.innerHTML = playlists
+        .map((p) => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`)
+        .join('');
+    }
+    // 填榜单多选
+    const bResp = await apiGet('/api/syncnew/boards');
+    const boardsBox = document.getElementById('snBoardsList');
+    if (boardsBox && bResp.success) {
+      const boards = (bResp.data && bResp.data.boards) || [];
+      if (boards.length) {
+        boardsBox.innerHTML = boards
+          .map((b) => `<label class="md-checkbox"><input type="checkbox" data-board="${escapeHtml(b.id)}"> ${escapeHtml(b.name)}</label>`)
+          .join('');
+      } else {
+        boardsBox.innerHTML = '<span class="form-desc">榜单列表获取失败</span>';
+      }
+    }
+    const resp = await apiGet('/api/syncnew/config');
+    if (!resp.success) throw new Error(resp.error || '加载失败');
+    const c = resp.data.config || {};
+    document.getElementById('snEnabled').checked = !!c.enabled;
+    document.getElementById('snLimit').value = c.limit ?? 10;
+    const targetId = String(c.playlistId ?? 4);
+    if (select) select.value = targetId;
+    document.getElementById('snHour').value = c.hour ?? 9;
+    document.getElementById('snMinute').value = c.minute ?? 0;
+    // 勾选已配置的榜单
+    const cfgBoards = (c.boards || 'wy__3779629,wy__19723756').split(',').map((x) => x.trim()).filter(Boolean);
+    if (boardsBox) {
+      boardsBox.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+        cb.checked = cfgBoards.includes(cb.dataset.board);
+      });
+    }
+    document.getElementById('snExcludeRap').checked = c.excludeRap !== false;
+    document.getElementById('snExcludeKids').checked = c.excludeKids !== false;
+    document.getElementById('snExcludeKeywords').value = c.excludeKeywords || '';
+  } catch (e) {
+    showToast('新歌同步配置加载失败：' + String(e.message || e), false);
+  }
+}
+
+/** 保存"新歌同步"配置 */
+async function saveSyncNew() {
+  const btn = document.getElementById('btnSaveSyncNew');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const boardsBox = document.getElementById('snBoardsList');
+    const boards = boardsBox
+      ? [...boardsBox.querySelectorAll('input[type=checkbox]:checked')].map((cb) => cb.dataset.board).filter(Boolean)
+      : [];
+    const payload = {
+      enabled: document.getElementById('snEnabled').checked,
+      limit: Number(document.getElementById('snLimit').value) || 10,
+      playlistId: Number(document.getElementById('snPlaylist').value) || 4,
+      hour: Number(document.getElementById('snHour').value) || 9,
+      minute: Number(document.getElementById('snMinute').value) || 0,
+      boards: boards.join(',') || 'wy__3779629,wy__19723756',
+      excludeRap: document.getElementById('snExcludeRap').checked,
+      excludeKids: document.getElementById('snExcludeKids').checked,
+      excludeKeywords: document.getElementById('snExcludeKeywords').value.trim(),
+    };
+    const resp = await apiPost('/api/syncnew/config', payload);
+    if (resp.success) {
+      showToast('新歌同步配置已保存');
+      setSyncStatus('已保存，每天 ' + String(payload.hour).padStart(2, '0') + ':' + String(payload.minute).padStart(2, '0') + ' 自动同步');
+    } else {
+      showToast('保存失败：' + String(resp.error || ''), false);
+    }
+  } catch (e) {
+    showToast('保存失败：' + String(e.message || e), false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setSyncStatus(text) {
+  const el = document.getElementById('snStatus');
+  if (el) el.textContent = text || '';
+}
+
+/** 立即同步（真实入库，非 dry-run） */
+async function runSyncNow() {
+  const btn = document.getElementById('btnSyncNow');
+  if (!btn) return;
+  btn.disabled = true;
+  setSyncStatus('同步中…');
+  try {
+    const resp = await apiPost('/api/syncnew/run', { dryRun: false });
+    const d = resp.data || {};
+    if (resp.success && d.ok) {
+      setSyncStatus('同步完成：入库 ' + d.added + ' 首（候选 ' + d.candidates + '，跳过 ' + d.skipped + '）');
+    } else {
+      setSyncStatus('同步失败：' + String(d.reason || resp.error || '未知错误'));
+      showToast('同步失败：' + String(d.reason || resp.error || ''), false);
+    }
+  } catch (e) {
+    setSyncStatus('同步失败：' + String(e.message || e));
+    showToast('同步失败：' + String(e.message || e), false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/** 初始化新歌同步卡片事件 */
+export function initSyncNew() {
+  const saveBtn = document.getElementById('btnSaveSyncNew');
+  if (saveBtn) saveBtn.addEventListener('click', saveSyncNew);
+  const runBtn = document.getElementById('btnSyncNow');
+  if (runBtn) runBtn.addEventListener('click', runSyncNow);
+}
+
+// ── 排除歌单 ──────────────────────────────────────────────────────────────────
+
+let excludeLoading = false;
+
+/** 加载"排除歌单"设置：列出可用歌单并以勾选框呈现，勾选后即时保存 */
+export async function loadExclude() {
+  if (excludeLoading) return;
+  excludeLoading = true;
+  const box = document.getElementById('excludePlaylistList');
+  if (!box) {
+    excludeLoading = false;
+    return;
+  }
+  try {
+    const resp = await apiGet('/api/recommend/exclude');
+    if (!resp.success) throw new Error(resp.error || '加载失败');
+    const { exclude = [], playlists = [] } = resp.data || {};
+    if (!playlists.length) {
+      box.innerHTML = '<span class="form-desc">没有可选的歌单</span>';
+      return;
+    }
+    box.innerHTML = playlists
+      .map((p) => {
+        const checked = exclude.includes(p.name) ? 'checked' : '';
+        return `<label class="md-checkbox" style="margin-bottom:6px;"><input type="checkbox" data-name="${escapeHtml(p.name)}" ${checked}>${escapeHtml(p.name)}</label>`;
+      })
+      .join('');
+    box.querySelectorAll('input[type=checkbox]').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        const names = [...box.querySelectorAll('input[type=checkbox]:checked')].map((c) => c.dataset.name);
+        try {
+          const r = await apiPost('/api/recommend/exclude', { exclude: names });
+          if (r.success) showToast('排除歌单已保存');
+          else showToast('保存失败：' + String(r.error || ''), false);
+        } catch (e) {
+          showToast('保存失败：' + String(e.message || e), false);
+        }
+      });
+    });
+  } catch (e) {
+    box.innerHTML = `<span class="form-desc">加载失败：${escapeHtml(String(e.message || e))}</span>`;
+  } finally {
+    excludeLoading = false;
+  }
+}
+
 // ── 规则歌单 ──────────────────────────────────────────────────────────────────
 
 let facetsLoaded = false;

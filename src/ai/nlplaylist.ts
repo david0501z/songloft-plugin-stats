@@ -44,7 +44,7 @@ export async function nlToRule(text: string): Promise<NlRuleResult> {
       { role: 'system', content: system },
       { role: 'user', content: input },
     ],
-    { temperature: 0.2, jsonMode: true }
+    { temperature: 0.2, jsonMode: true, thinking: false }
   );
 
   let parsed: any;

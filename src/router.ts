@@ -9,9 +9,11 @@ import { getBackupDavConfigs, saveBackupDavConfigs, getBackupDavConfig, loadBack
 import { testConnection, listDirectory, uploadBackup, downloadBackup } from './webdav';
 import { doPush, scheduleNextPush, scheduleNextBackup, loadRecommendSchedule, saveRecommendSchedule, scheduleNextRecommendRefresh, doRecommendRefresh, scheduleNextAiReport } from './scheduler';
 import type { PushResult, RecommendSchedule } from './scheduler';
-import { generateRecommend, materializePlaylist, MODE_INFO, ALL_MODES } from './recommend/playlists';
+import { generateRecommend, materializePlaylist, MODE_INFO, ALL_MODES, loadExcludePlaylists, saveExcludePlaylists } from './recommend/playlists';
 import type { RecommendMode } from './recommend/playlists';
 import { loadRules, upsertRule, deleteRule, generateRuleItems, materializeRule, getLibraryFacets } from './recommend/rules';
+import { loadSkipInsertConfig, saveSkipInsertConfig, pickForSkip } from './skipinsert';
+import { loadSyncConfig, saveSyncConfig, runSync, scheduleNextSync } from './syncnew';
 import { getTagStatus, triggerTagScrape, getTagScrapeProgress } from './recommend/linkage';
 import { loadAiConfig, saveAiConfig, isAiConfigured, testAiConnection } from './ai/client';
 import { nlToRule } from './ai/nlplaylist';
@@ -440,6 +442,140 @@ function registerStatsHandlers(router: Router): void {
     }
   });
 
+  // ── 切歌补位（快速切歌→挑不同风格→插入歌单）────────────────────────────
+
+  router.get('/api/skipinsert/config', async () => {
+    const config = await loadSkipInsertConfig();
+    return jsonResponse({ success: true, data: { config } });
+  });
+
+  router.post('/api/skipinsert/config', async (req: HTTPRequest) => {
+    try {
+      const input = parseBody(req);
+      const config = await saveSkipInsertConfig(input);
+      return jsonResponse({ success: true, data: { config } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  // 客户端诊断上报：桥接可用性 / 插入结果（便于排障）
+  router.post('/api/skipinsert/diag', async (req: HTTPRequest) => {
+    try {
+      const body = parseBody(req) as Record<string, unknown>;
+      songloft.log.info(`[切歌补位][客户端诊断] ${JSON.stringify(body)}`);
+      return jsonResponse({ success: true });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  // ── 新歌同步（洛雪音源榜单 → 歌单）─────────────────────────────
+  router.get('/api/syncnew/boards', async () => {
+    try {
+      const hostUrl = await songloft.plugin.getHostUrl();
+      const token = await songloft.plugin.getToken();
+      const resp = await fetch(`${hostUrl}/api/v1/jsplugin/lxmusic/api/leaderboard/boards?source_id=wy`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) throw new Error(`洛雪榜单接口 HTTP ${resp.status}`);
+      const data = (await resp.json()) as { data?: { id: string; name: string }[] };
+      // 排除说唱榜（仅用于排除，不作为收录榜单）
+      const boards = (data?.data || [])
+        .filter((b) => b && b.id && b.id !== 'wy__991319590')
+        .map((b) => ({ id: b.id, name: b.name }));
+      return jsonResponse({ success: true, data: { boards } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  router.get('/api/syncnew/playlists', async () => {
+    try {
+      const list = await songloft.playlists.list();
+      const playlists = list.map((pl) => ({ id: pl.id, name: pl.name })).filter((p) => p.name);
+      return jsonResponse({ success: true, data: { playlists } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  router.get('/api/syncnew/config', async () => {
+    const config = await loadSyncConfig();
+    return jsonResponse({ success: true, data: { config } });
+  });
+
+  router.post('/api/syncnew/config', async (req: HTTPRequest) => {
+    try {
+      const input = parseBody(req) as Record<string, unknown>;
+      // 保存后重排下一次调度
+      const config = await saveSyncConfig(input);
+      scheduleNextSync();
+      return jsonResponse({ success: true, data: { config } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  router.post('/api/syncnew/run', async (req: HTTPRequest) => {
+    try {
+      const body = parseBody(req) as Record<string, unknown>;
+      const result = await runSync({ dryRun: Boolean(body?.dryRun) });
+      return jsonResponse({ success: result.ok, data: result });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  // 客户端快速切歌后调用：挑不同风格歌曲（已排除「排除歌单」与队列内歌）
+  router.post('/api/skipinsert/pick', async (req: HTTPRequest) => {
+    try {
+      const body = parseBody(req) as {
+        lastSong?: { id: number; title: string; artist: string };
+        count?: number;
+        queueIds?: number[];
+      };
+      if (!body.lastSong || !body.lastSong.id) {
+        return jsonResponse({ success: false, error: '缺少 lastSong' });
+      }
+      const cfg = await loadSkipInsertConfig();
+      const count = Math.min(5, Math.max(1, Number(body.count ?? cfg.count) || cfg.count));
+      const songs = await pickForSkip(
+        { id: Number(body.lastSong.id), title: String(body.lastSong.title || ''), artist: String(body.lastSong.artist || '') },
+        count,
+        Array.isArray(body.queueIds) ? body.queueIds.map(Number) : [],
+      );
+      return jsonResponse({ success: true, data: { songs } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
+  // ── 排除歌单（推荐时跳过指定歌单内的歌曲）────────────────────────────
+
+  router.get('/api/recommend/exclude', async () => {
+    const exclude = await loadExcludePlaylists();
+    let playlists: { id: number; name: string }[] = [];
+    try {
+      const list = await songloft.playlists.list();
+      playlists = list.map((pl) => ({ id: pl.id, name: pl.name })).filter((p) => p.name);
+    } catch {
+      /* 无法枚举歌单时忽略，前端显示空列表 */
+    }
+    return jsonResponse({ success: true, data: { exclude, playlists } });
+  });
+
+  router.post('/api/recommend/exclude', async (req: HTTPRequest) => {
+    try {
+      const input = parseBody(req);
+      const names = Array.isArray(input.exclude) ? input.exclude.map(String) : [];
+      await saveExcludePlaylists(names);
+      return jsonResponse({ success: true, data: { exclude: await loadExcludePlaylists() } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: String(e) });
+    }
+  });
+
   // ── 规则歌单 ────────────────────────────────────────────────────────────────
 
   router.get('/api/recommend/facets', async () => {
@@ -577,6 +713,7 @@ function registerStatsHandlers(router: Router): void {
         baseUrl: String(input.baseUrl || ''),
         apiKey: String(input.apiKey || ''),
         model: String(input.model || ''),
+        disableThinking: input.disableThinking !== false,
       });
       return jsonResponse({ success: true, data: { configured: await isAiConfigured() } });
     } catch (e) {

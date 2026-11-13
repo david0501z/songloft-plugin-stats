@@ -18,11 +18,17 @@ import { initBackup, loadBackupServers } from './backup.js';
 import {
   initRecommend,
   loadRecommend,
+  loadExclude,
+  loadSkipInsert,
+  initSkipInsert,
+  loadSyncNew,
+  initSyncNew,
   loadRecSchedule,
   loadRuleFacets,
   loadRules,
   loadTagStatus,
 } from './recommend.js';
+import { initSkipInsertClient } from './skipinsert_client.js';
 import { initAi, loadAiSettings, refreshAiCards } from './ai.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -32,6 +38,9 @@ document.addEventListener('DOMContentLoaded', () => {
   initPush();
   initBackup();
   initRecommend();
+  initSkipInsert();
+  initSyncNew();
+  initSkipInsertClient();
   initAi();
 
   // 主 Tab 切换（统计 / 推荐 / 设置）—— 新外壳使用 .tab-item / .active
@@ -50,6 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (tabName === 'recommend') {
       loadRecommend();
+      loadExclude();
+      loadSkipInsert();
+      loadSyncNew();
       // 其余子页面的数据在切到对应子 Tab 时才加载
     }
   });
@@ -73,8 +85,12 @@ document.addEventListener('DOMContentLoaded', () => {
         loadTagStatus();
         refreshAiCards();
       }
+      if (subTabName === 'rec-skip') {
+        loadSkipInsert();
+      }
       if (subTabName === 'rec-auto') {
         loadRecSchedule();
+        loadSyncNew();
       }
     });
   }

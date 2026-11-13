@@ -2,6 +2,7 @@
 import type { HTTPRequest, HTTPResponse } from '@songloft/plugin-sdk';
 import router from './router';
 import { startScheduler, stopScheduler, subscribePlayEvents } from './scheduler';
+import { scheduleNextSync } from './syncnew';
 import { drainWrites } from './store';
 
 async function onInit(): Promise<void> {
@@ -9,6 +10,8 @@ async function onInit(): Promise<void> {
   subscribePlayEvents();
   // 启动定时推送 / 备份调度
   startScheduler();
+  // 新歌同步每日调度（洛雪榜单 → 歌单）
+  scheduleNextSync();
 }
 
 async function onDeinit(): Promise<void> {

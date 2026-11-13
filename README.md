@@ -16,6 +16,9 @@
   - **AI 建歌单**：一句话描述翻译成筛选规则，本地规则引擎执行预览（零幻觉），确认后保存为规则歌单；
   - **AI 听歌报告**：基于真实统计数据生成个性化文案，可手动推送，可定时（周报每周一 / 月报每月 1 日）；
   - **AI 标签补全**：LLM 推断缺失的流派/年份并写回曲库，作为标签刮削不到时的兜底。
+- **排除歌单**：推荐（随便听听 / 免切歌精选等）时跳过指定歌单内的歌曲，适合把儿童歌曲、特定场景歌单排除在外。
+- **切歌补位**：快速切歌（播放没几秒就切）后自动挑不同风格歌曲插入播放队列（客户端 `player.insertToQueue`），不阻断切歌，AI 未响应自动回退规则挑选。
+- **新歌同步**：每日定时从洛雪音源插件榜单（新歌榜/飙升榜）拉取新歌，过滤已存在、说唱榜与儿歌关键词后加入指定歌单。
 - **定时推送**：每日定时将昨日统计摘要推送到 飞书 / WxPusher（两平台共用一个推送时间）。
 - **WebDAV 备份**：手动 / 定时备份播放历史到 WebDAV 服务器，支持浏览服务器文件并恢复导入。
 
@@ -56,6 +59,8 @@ songloft-plugin-stats/
 │   ├── scheduler.ts         # 播放事件订阅、保活心跳与推送/备份/推荐/AI报告定时调度
 │   ├── pusher.ts            # 飞书 / WxPusher 推送实现与内容构建
 │   ├── webdav.ts            # WebDAV 连接 / 列举 / 上传 / 下载
+│   ├── skipinsert.ts        # 切歌补位：服务端挑不同风格歌曲 + 配置
+│   ├── syncnew.ts           # 新歌同步：洛雪榜单拉取 + 筛选 + 入库 + 每日定时
 │   ├── push/config.ts       # 推送平台与定时配置
 │   ├── backup/config.ts     # WebDAV 备份配置与定时
 │   ├── recommend/
@@ -127,6 +132,19 @@ songloft-plugin-stats/
 | GET/POST | `/api/recommend/schedule` | 推荐定时刷新配置（时间 + 模式 + 是否含规则歌单） |
 | POST | `/api/recommend/refresh` | 立即执行一轮推荐刷新 |
 
+### 排除歌单 / 切歌补位 / 新歌同步
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET/POST | `/api/recommend/exclude` | 推荐时排除的歌单（body `{exclude:[歌单名]}`） |
+| GET/POST | `/api/skipinsert/config` | 切歌补位配置（`enabled`/`count`/`quickSkipSec`/`debounceSec`/`useAi`） |
+| POST | `/api/skipinsert/pick` | 快速切歌后挑不同风格歌曲（body `lastSong`/`count`/`queueIds`） |
+| POST | `/api/skipinsert/diag` | 客户端桥接/插入结果诊断上报 |
+| GET/POST | `/api/syncnew/config` | 新歌同步配置（`enabled`/`limit`/`boards`/`playlistId`/`hour`/`minute`/`excludeRap`/`excludeKids`/`excludeKeywords`） |
+| GET | `/api/syncnew/playlists` | 歌单列表（供目标歌单下拉框） |
+| GET | `/api/syncnew/boards` | 洛雪榜单列表（供榜单多选，排除说唱榜） |
+| POST | `/api/syncnew/run` | 立即执行一次新歌同步（body `{dryRun}`） |
+
 ### tag 插件联动
 
 | 方法 | 路径 | 说明 |
@@ -139,7 +157,7 @@ songloft-plugin-stats/
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET/POST | `/api/ai/config` | 读取 / 保存 AI 服务配置（`baseUrl`/`apiKey`/`model`） |
+| GET/POST | `/api/ai/config` | 读取 / 保存 AI 服务配置（`baseUrl`/`apiKey`/`model`/`disableThinking`） |
 | POST | `/api/ai/test` | AI 连通性测试 |
 | POST | `/api/ai/nlplaylist` | 自然语言解析为规则并返回前 20 条预览（body `text`） |
 | POST | `/api/ai/report` | 生成 AI 听歌报告（`period`: week/month，`push`: 是否同时推送） |
