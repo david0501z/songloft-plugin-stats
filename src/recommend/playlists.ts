@@ -58,7 +58,7 @@ export async function saveExcludePlaylists(names: string[]): Promise<void> {
 }
 
 /** 收集被排除歌单内的歌曲 ID 集合 */
-async function loadExcludedSongIds(): Promise<Set<number>> {
+export async function loadExcludedSongIds(): Promise<Set<number>> {
   const names = await loadExcludePlaylists();
   const excluded = new Set<number>();
   if (!names.length) return excluded;

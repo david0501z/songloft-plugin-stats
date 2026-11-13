@@ -14,10 +14,13 @@ export interface AiConfig {
   apiKey: string;
   /** 模型名，如 deepseek-chat */
   model: string;
+  /** 是否发送 thinking:{type:'disabled'} 禁用推理。默认 true（sensenova-6.8-flash-lite 等推理模型会吃光预算）；
+   *  非思考模型若拒绝该参数，chatComplete 会自动去掉重试一次，无需手动关闭。 */
+  disableThinking: boolean;
 }
 
 function defaultAiConfig(): AiConfig {
-  return { baseUrl: '', apiKey: '', model: '' };
+  return { baseUrl: '', apiKey: '', model: '', disableThinking: true };
 }
 
 export async function loadAiConfig(): Promise<AiConfig> {
@@ -29,6 +32,7 @@ export async function loadAiConfig(): Promise<AiConfig> {
       baseUrl: typeof data.baseUrl === 'string' ? data.baseUrl : '',
       apiKey: typeof data.apiKey === 'string' ? data.apiKey : '',
       model: typeof data.model === 'string' ? data.model : '',
+      disableThinking: data.disableThinking !== false,
     };
   } catch {
     return defaultAiConfig();
@@ -40,6 +44,7 @@ export async function saveAiConfig(config: AiConfig): Promise<void> {
     baseUrl: String(config.baseUrl || '').trim().replace(/\/+$/, ''),
     apiKey: String(config.apiKey || '').trim(),
     model: String(config.model || '').trim(),
+    disableThinking: config.disableThinking !== false,
   });
 }
 
@@ -54,7 +59,7 @@ export interface ChatMessage {
 }
 
 /** 调用 chat completions，返回首条回复文本。QuickJS fetch 无 AbortController，用 Promise.race 兜底超时 */
-export async function chatComplete(messages: ChatMessage[], opts?: { temperature?: number; jsonMode?: boolean; timeoutMs?: number; maxTokens?: number }): Promise<string> {
+export async function chatComplete(messages: ChatMessage[], opts?: { temperature?: number; jsonMode?: boolean; timeoutMs?: number; maxTokens?: number; thinking?: boolean }): Promise<string> {
   const config = await loadAiConfig();
   if (!config.baseUrl || !config.apiKey || !config.model) {
     throw new Error('AI 未配置，请先在设置中填写 API 地址、密钥和模型');
@@ -69,21 +74,47 @@ export async function chatComplete(messages: ChatMessage[], opts?: { temperature
   if (opts?.jsonMode) {
     body.response_format = { type: 'json_object' };
   }
+  // 推理模型（如 sensenova-6.8-flash-lite）默认很费推理 token，容易把
+  // max_tokens 预算吃光导致 content 为空；需要结构化/快速输出时显式关闭。
+  // 优先级：调用方 opts.thinking 显式指定 > 配置页 disableThinking（默认 true）。
+  const disableThinking = opts?.thinking !== undefined ? opts.thinking === false : config.disableThinking;
+  if (disableThinking) {
+    body.thinking = { type: 'disabled' };
+  }
 
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const request = fetch(`${config.baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  } as any);
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error(`AI 请求超时（${Math.round(timeoutMs / 1000)}s）`)), timeoutMs)
-  );
+  const doFetch = () =>
+    Promise.race([
+      fetch(`${config.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      } as any),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`AI 请求超时（${Math.round(timeoutMs / 1000)}s）`)), timeoutMs)
+      ),
+    ]);
 
-  const res = await Promise.race([request, timeout]);
+  let res = await doFetch();
+
+  // 非思考模型可能拒绝 thinking 参数（HTTP 400 "parameter not supported"）：
+  // 若报错疑似参数被拒，去掉 thinking 重试一次，保证换模型也能用。
+  if (!res.ok && disableThinking) {
+    let errText = '';
+    try {
+      const errBody = await res.json();
+      errText = errBody?.error?.message || JSON.stringify(errBody).slice(0, 300);
+    } catch { /* 忽略 */ }
+    if (/thinking|reasoning|not support|unsupported|unknown.*param|invalid.*param|参数/i.test(errText)) {
+      songloft.log.warn(`[AI] thinking 参数被拒，去掉后重试一次（疑似非思考模型）: ${errText.slice(0, 120)}`);
+      delete body.thinking;
+      res = await doFetch();
+    }
+  }
+
   if (!res.ok) {
     let detail = '';
     try {
