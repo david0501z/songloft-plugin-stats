@@ -1,7 +1,7 @@
 /// <reference types="@songloft/plugin-sdk" />
 import { createRouter, jsonResponse, parseQuery } from '@songloft/plugin-sdk';
 import type { Router, HTTPRequest } from '@songloft/plugin-sdk';
-import { loadHistory, getSummary, getDedupIndex, resetHistory, importRecords, exportHistory, getMaxHistory, setMaxHistory, getRecordCount } from './store';
+import { loadHistory, getSummary, getDedupIndex, resetHistory, importRecords, exportHistory, deleteHistoryRecords, getMaxHistory, setMaxHistory, getRecordCount } from './store';
 import { computeSummary, computeTrends, computeHourlyDistribution } from './aggregator';
 import type { TimeRange } from './types';
 import { loadPushConfig, savePushConfig, loadPushSchedule, savePushSchedule } from './push/config';
@@ -102,6 +102,18 @@ function registerStatsHandlers(router: Router): void {
       success: true,
       data: { total: history.length, records, hasMore: start > 0 },
     });
+  });
+
+  router.post('/api/history/delete', async (req) => {
+    try {
+      const input = parseBody(req);
+      const records = Array.isArray(input?.records) ? input.records : Array.isArray(input) ? input : [];
+      const deleted = await deleteHistoryRecords(records);
+      if (deleted > 0) songloft.log.info(`[历史删除] 删除 ${deleted} 条记录`);
+      return jsonResponse({ success: true, data: { deleted } });
+    } catch (e) {
+      return jsonResponse({ success: false, error: '删除失败: ' + String(e) });
+    }
   });
 
   router.get('/api/stats/trends', async (req) => {

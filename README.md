@@ -95,6 +95,7 @@ songloft-plugin-stats/
 | GET | `/api/stats/hourly` | 四时段（凌晨/上午/下午/晚上）播放分布 |
 | GET | `/api/history` | 去重播放历史（每首歌取最近一条，分页） |
 | GET | `/api/history/raw` | 原始播放历史（不去重，`limit`/`offset` 分页） |
+| POST | `/api/history/delete` | 删除指定播放记录（body `{records:[{songId,timestamp}]}`，按 songId+timestamp 匹配） |
 | GET | `/api/export` | 导出全部历史（JSON 附件下载） |
 | POST | `/api/import` | 导入历史（按 songId+timestamp 去重合并），body 为 `{records:[...]}` 或裸数组 |
 | POST | `/api/reset` | 清空播放历史与切歌计数 |

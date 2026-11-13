@@ -420,9 +420,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 0;
+  padding: 10px 52px 10px 0; /* 右侧留删除按钮空间 */
   border-bottom: 1px solid var(--md-outline-variant, #e7e0ec);
   font-size: 0.875rem;
+  position: relative;
 }
 .history-list li:last-child { border-bottom: none; }
 .history-list__song {
@@ -435,6 +436,21 @@ body {
   font-size: 0.75rem;
   color: var(--md-on-surface-variant, #49454f);
 }
+.history-del {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--md-error, #b3261e);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.history-del:hover { background: var(--md-error-container, #f9dedc); }
+.history-del:disabled { opacity: 0.5; cursor: default; }
 
 .history-footer {
   text-align: center;
