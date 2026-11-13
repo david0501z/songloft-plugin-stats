@@ -393,6 +393,42 @@ export async function importRecords(newRecords: PlayRecord[]): Promise<number> {
   return p;
 }
 
+/** 删除指定播放记录（按 songId+timestamp 精确匹配）。经写入队列串行化，返回删除条数 */
+export async function deleteHistoryRecords(keys: { songId: number; timestamp: number }[]): Promise<number> {
+  if (!Array.isArray(keys) || keys.length === 0) return 0;
+  const p = writeQueue.then(async (): Promise<number> => {
+    const keySet = new Set<string>();
+    for (const k of keys) {
+      if (k && typeof k.songId === 'number' && typeof k.timestamp === 'number') {
+        keySet.add(`${k.songId}|${k.timestamp}`);
+      }
+    }
+    if (keySet.size === 0) return 0;
+
+    const history = await loadHistory();
+    const before = history.length;
+    const filtered = history.filter((r) => !keySet.has(`${r.songId}|${r.timestamp}`));
+    const deleted = before - filtered.length;
+    if (deleted > 0) {
+      await flushSave(filtered);
+      // 删除后重建增量聚合状态（与导入/重置一致）
+      if (incInitialized) {
+        rebuildIncState(filtered);
+      }
+      // 去重索引失效，下次查询时重建
+      dedupIndex = null;
+    }
+    return deleted;
+  });
+  writeQueue = p.catch((e) => {
+    songloft.log.error('[store] deleteHistoryRecords 失败: ' + String(e));
+    return 0;
+  }).then(() => {
+    // noop
+  });
+  return p;
+}
+
 /** 获取当前总记录数（从缓存读取，不触发存储 IO）*/
 export async function getRecordCount(): Promise<number> {
   const h = await loadHistory();

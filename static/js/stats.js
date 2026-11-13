@@ -229,6 +229,7 @@ function renderHistory(records, append) {
         `<li>` +
         `<span class="history-list__song">${escapeHtml(r.artist)} — ${escapeHtml(r.title)}</span>` +
         `<span class="history-list__meta">${formatTime(r.timestamp)} · ${mediaLabel(r.type)} · ${sourceLabel(r.source)}</span>` +
+        `<button class="history-del" data-sid="${r.songId}" data-ts="${r.timestamp}" title="删除这条记录">删除</button>` +
         `</li>`,
     )
     .join('');
@@ -347,6 +348,30 @@ export function initStats() {
 
   // 加载更多
   document.getElementById('btnLoadMore').addEventListener('click', loadMoreHistory);
+
+  // 历史记录删除（事件委托，行是动态插入的）
+  document.getElementById('historyList').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.history-del');
+    if (!btn) return;
+    const sid = Number(btn.dataset.sid);
+    const ts = Number(btn.dataset.ts);
+    if (isNaN(sid) || isNaN(ts)) return;
+    const li = btn.closest('li');
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const resp = await apiPost('/api/history/delete', { records: [{ songId: sid, timestamp: ts }] });
+      if (resp && resp.success && resp.data && resp.data.deleted > 0) {
+        if (li) li.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = '删除';
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = '删除';
+    }
+  });
 
   // 60 秒轮询
   let timer = setInterval(() => loadData(currentRange, false), 60_000);
