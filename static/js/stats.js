@@ -234,6 +234,37 @@ function renderHistory(records, append) {
     )
     .join('');
   el.insertAdjacentHTML('beforeend', html);
+  // 直接绑定删除监听（每次渲染后对新按钮绑定；与其它按钮一致用直接监听）
+  el.querySelectorAll('.history-del:not([data-bound])').forEach((btn) => {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => handleDeleteRecord(btn));
+  });
+}
+
+/** 删除一条播放记录（直接监听，非委托）。data-deleting 防重入（直接+捕获委托双保险） */
+async function handleDeleteRecord(btn) {
+  if (btn.dataset.deleting === '1') return;
+  const sid = Number(btn.dataset.sid);
+  const ts = Number(btn.dataset.ts);
+  if (isNaN(sid) || isNaN(ts)) return;
+  const li = btn.closest('li');
+  btn.dataset.deleting = '1';
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const resp = await apiPost('/api/history/delete', { records: [{ songId: sid, timestamp: ts }] });
+    if (resp && resp.success && resp.data && resp.data.deleted > 0) {
+      if (li) li.remove();
+    } else {
+      btn.disabled = false;
+      btn.textContent = '删除';
+      delete btn.dataset.deleting;
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '删除';
+    delete btn.dataset.deleting;
+  }
 }
 
 // ── 历史分页 ──────────────────────────────────────────────────────────────────
@@ -349,29 +380,16 @@ export function initStats() {
   // 加载更多
   document.getElementById('btnLoadMore').addEventListener('click', loadMoreHistory);
 
-  // 历史记录删除（事件委托，行是动态插入的）
-  document.getElementById('historyList').addEventListener('click', async (e) => {
-    const btn = e.target.closest('.history-del');
-    if (!btn) return;
-    const sid = Number(btn.dataset.sid);
-    const ts = Number(btn.dataset.ts);
-    if (isNaN(sid) || isNaN(ts)) return;
-    const li = btn.closest('li');
-    btn.disabled = true;
-    btn.textContent = '…';
-    try {
-      const resp = await apiPost('/api/history/delete', { records: [{ songId: sid, timestamp: ts }] });
-      if (resp && resp.success && resp.data && resp.data.deleted > 0) {
-        if (li) li.remove();
-      } else {
-        btn.disabled = false;
-        btn.textContent = '删除';
-      }
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = '删除';
-    }
-  });
+  // 历史删除兜底：document 捕获相位委托（最早触发、无法被 stopPropagation 拦截；
+  // 直接监听失效时仍能删；data-deleting 防与直接监听重复）
+  document.addEventListener(
+    'click',
+    (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('.history-del') : null;
+      if (btn) handleDeleteRecord(btn);
+    },
+    true
+  );
 
   // 60 秒轮询
   let timer = setInterval(() => loadData(currentRange, false), 60_000);
