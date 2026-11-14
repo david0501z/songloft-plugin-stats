@@ -141,18 +141,39 @@ export async function loadSyncNew() {
         .map((p) => `<option value="${Number(p.id)}">${escapeHtml(p.name)}</option>`)
         .join('');
     }
-    // 填榜单多选
+    // 榜单（多平台，按平台分组）；无洛雪插件时隐藏整个新歌同步卡片
     const bResp = await apiGet('/api/syncnew/boards');
     const boardsBox = document.getElementById('snBoardsList');
-    if (boardsBox && bResp.success) {
-      const boards = (bResp.data && bResp.data.boards) || [];
-      if (boards.length) {
-        boardsBox.innerHTML = boards
-          .map((b) => `<label class="md-checkbox"><input type="checkbox" data-board="${escapeHtml(b.id)}"> ${escapeHtml(b.name)}</label>`)
-          .join('');
-      } else {
-        boardsBox.innerHTML = '<span class="form-desc">榜单列表获取失败</span>';
+    const card = document.getElementById('syncnewCard');
+    if (bResp.success) {
+      const { available = false, platforms = [] } = bResp.data || {};
+      if (!available) {
+        if (card) card.style.display = 'none';
+        return;
       }
+      if (card) card.style.display = '';
+      if (boardsBox) {
+        if (platforms.length) {
+          boardsBox.innerHTML = platforms
+            .map(
+              (p) =>
+                `<div style="width:100%;margin-bottom:4px;"><span class="form-desc" style="font-weight:600;">${escapeHtml(p.name)}</span></div>` +
+                `<div style="display:flex;flex-wrap:wrap;gap:6px 14px;width:100%;">` +
+                (p.boards || [])
+                  .map(
+                    (b) =>
+                      `<label class="md-checkbox"><input type="checkbox" data-board="${escapeHtml(b.id)}"> ${escapeHtml(b.name)}</label>`,
+                  )
+                  .join('') +
+                `</div>`,
+            )
+            .join('');
+        } else {
+          boardsBox.innerHTML = '<span class="form-desc">榜单列表获取失败</span>';
+        }
+      }
+    } else if (boardsBox) {
+      boardsBox.innerHTML = '<span class="form-desc">榜单列表获取失败</span>';
     }
     const resp = await apiGet('/api/syncnew/config');
     if (!resp.success) throw new Error(resp.error || '加载失败');

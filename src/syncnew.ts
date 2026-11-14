@@ -12,10 +12,38 @@ const KIDS_KW = [
 // 说唱关键词（标题命中即跳过；由 excludeRap 控制，另加说唱榜排除）
 const RAP_KW = ['说唱', 'rap', 'hiphop', 'hip-hop', 'trap', 'drill', 'freestyle', '嘻哈'];
 
-const RAP_BOARD = 'wy__991319590';               // 说唱榜（用于排除说唱）
-const DEFAULT_BOARDS = 'wy__3779629,wy__19723756'; // 新歌榜, 飙升榜（老歌也可，用户确认）
+// 洛雪支持的音源平台（榜单可多平台选择，用户可选）
+const PLATFORMS = [
+  { id: 'wy', name: '网易云' },
+  { id: 'tx', name: 'QQ音乐' },
+  { id: 'kg', name: '酷狗' },
+  { id: 'kw', name: '酷我' },
+  { id: 'mg', name: '咪咕' },
+];
+// 各平台说唱榜（仅用于排除说唱，不作为可收录榜单）
+const RAP_BOARDS = ['wy__991319590', 'tx__58', 'kg__44412'];
+const DEFAULT_BOARDS = 'wy__3779629,wy__19723756'; // 网易云新歌榜, 飙升榜（老歌也可，用户确认）
 const PAGE_SIZE = 500;
 const MAX_SCAN = 5000;
+
+// boardId 形如 `wy__3779629` / `tx__4` —— 前段是平台，后段是榜单 id
+function parseBoardId(boardId: string): { source: string; boardId: string } {
+  const idx = boardId.indexOf('__');
+  if (idx <= 0) return { source: 'wy', boardId };
+  return { source: boardId.slice(0, idx), boardId: boardId.slice(idx + 2) };
+}
+
+function toName(v: unknown): string {
+  if (v == null) return '';
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => (x && typeof x === 'object' ? String((x as Record<string, unknown>).name ?? '') : String(x)))
+      .filter(Boolean)
+      .join('/');
+  }
+  if (typeof v === 'object') return String((v as Record<string, unknown>).name ?? '');
+  return String(v);
+}
 
 export interface SyncNewConfig {
   enabled: boolean;
@@ -79,11 +107,57 @@ async function lxFetch(path: string): Promise<Record<string, unknown> | unknown[
 }
 
 async function fetchBoard(boardId: string): Promise<Record<string, unknown>[]> {
+  const { source } = parseBoardId(boardId);
   const data = (await lxFetch(
-    `/leaderboard/list?source_id=wy&board_id=${encodeURIComponent(boardId)}`,
+    `/leaderboard/list?source_id=${encodeURIComponent(source)}&board_id=${encodeURIComponent(boardId)}`,
   )) as Record<string, unknown>;
   const d = (data?.data as Record<string, unknown>) || data || {};
   return (d.list as Record<string, unknown>[]) || (d.songs as Record<string, unknown>[]) || [];
+}
+
+/** 洛雪插件是否可用（未安装/未响应 → false，前端据此隐藏新歌同步） */
+export async function lxAvailable(): Promise<boolean> {
+  try {
+    await lxFetch('/leaderboard/boards?source_id=wy');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface BoardInfo {
+  id: string;
+  name: string;
+}
+export interface PlatformBoards {
+  id: string;
+  name: string;
+  boards: BoardInfo[];
+}
+
+/** 列出各平台榜单（排除说唱榜），供前端多平台选择 */
+export async function listBoards(): Promise<{ available: boolean; platforms: PlatformBoards[] }> {
+  const hostUrl = await songloft.plugin.getHostUrl();
+  const token = await songloft.plugin.getToken();
+  let available = false;
+  const platforms: PlatformBoards[] = [];
+  for (const p of PLATFORMS) {
+    try {
+      const resp = await fetch(`${hostUrl}/api/v1/jsplugin/lxmusic/api/leaderboard/boards?source_id=${p.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) continue;
+      available = true;
+      const data = (await resp.json()) as { data?: { id: string; name: string }[] };
+      const boards = (data?.data || [])
+        .filter((b) => b && b.id && !RAP_BOARDS.includes(b.id))
+        .map((b) => ({ id: b.id, name: b.name }));
+      if (boards.length) platforms.push({ id: p.id, name: p.name, boards });
+    } catch {
+      // 单个平台失败跳过（如未启用），不影响其它平台
+    }
+  }
+  return { available, platforms };
 }
 
 async function getExistingKeys(): Promise<Set<string>> {
@@ -117,27 +191,31 @@ export async function runSync(opts?: { dryRun?: boolean }): Promise<SyncResult> 
     const existing = await getExistingKeys();
     const seen = new Set<string>();
 
-    // 说唱榜内歌曲（用户明确不要说唱/嘻哈）
-    const rapIds = new Set<string>();
+    // 各平台说唱榜内歌曲（用户明确不要说唱/嘻哈；按 `平台:musicId` 匹配）
+    const rapKeys = new Set<string>();
     if (cfg.excludeRap) {
-      for (const s of await fetchBoard(RAP_BOARD)) {
-        const mid = String(s.musicId || s.songmid || '');
-        if (mid) rapIds.add(mid);
+      for (const rb of RAP_BOARDS) {
+        const { source } = parseBoardId(rb);
+        for (const s of await fetchBoard(rb)) {
+          const mid = String(s.musicId || s.songmid || '');
+          if (mid) rapKeys.add(`${source}:${mid}`);
+        }
       }
     }
 
-    const candidates: (Record<string, unknown> & { _dk: string })[] = [];
+    const candidates: (Record<string, unknown> & { _dk: string; _source: string })[] = [];
     for (const b of String(cfg.boards).split(',').map((x) => x.trim()).filter(Boolean)) {
+      const { source } = parseBoardId(b);
       for (const s of await fetchBoard(b)) {
         const mid = String(s.musicId || s.songmid || '');
         const name = String(s.name || '');
         if (!mid || !name) continue;
-        const dk = `wy:${mid}`;
+        const dk = `${source}:${mid}`;
         if (existing.has(dk) || seen.has(dk)) continue;
         if (isSkip(name, cfg)) continue;
-        if (rapIds.has(mid)) continue;
+        if (rapKeys.has(dk)) continue;
         seen.add(dk);
-        candidates.push({ ...s, _dk: dk });
+        candidates.push({ ...s, _dk: dk, _source: source });
       }
     }
 
@@ -152,9 +230,10 @@ export async function runSync(opts?: { dryRun?: boolean }): Promise<SyncResult> 
     const payloads: CreateSongPayload[] = pick.map((s) => {
       const mid = String(s.musicId || s.songmid || '');
       const name = String(s.name || '');
-      const singer = String(s.singer || s.artist || '');
+      const singer = toName(s.singer ?? s.artist);
       const album = String(s.album || '');
       const cover = String(s.img || '');
+      const source = String(s._source || 'wy');
       return {
         title: name,
         artist: singer,
@@ -163,13 +242,13 @@ export async function runSync(opts?: { dryRun?: boolean }): Promise<SyncResult> 
         duration: Number(s.duration) || undefined,
         dedupKey: String(s._dk),
         sourceData: JSON.stringify({
-          platform: 'wy',
+          platform: source,
           quality: 'master',
           songInfo: {
             name,
             singer,
             album,
-            source: 'wy',
+            source,
             musicId: s.musicId ?? undefined,
             duration: Number(s.duration) || 0,
             songmid: s.songmid ?? undefined,
@@ -177,7 +256,7 @@ export async function runSync(opts?: { dryRun?: boolean }): Promise<SyncResult> 
           },
         }),
         lyricRemoteUrl: mid
-          ? `/api/v1/jsplugin/lxmusic/api/direct/lyric?source=wy&musicId=${mid}`
+          ? `/api/v1/jsplugin/lxmusic/api/direct/lyric?source=${encodeURIComponent(source)}&musicId=${mid}`
           : undefined,
         isVideo: false,
       };

@@ -13,7 +13,7 @@ import { generateRecommend, materializePlaylist, MODE_INFO, ALL_MODES, loadExclu
 import type { RecommendMode } from './recommend/playlists';
 import { loadRules, upsertRule, deleteRule, generateRuleItems, materializeRule, getLibraryFacets } from './recommend/rules';
 import { loadSkipInsertConfig, saveSkipInsertConfig, pickForSkip } from './skipinsert';
-import { loadSyncConfig, saveSyncConfig, runSync, scheduleNextSync } from './syncnew';
+import { loadSyncConfig, saveSyncConfig, runSync, scheduleNextSync, listBoards } from './syncnew';
 import { getTagStatus, triggerTagScrape, getTagScrapeProgress } from './recommend/linkage';
 import { loadAiConfig, saveAiConfig, isAiConfigured, testAiConnection } from './ai/client';
 import { nlToRule } from './ai/nlplaylist';
@@ -485,18 +485,8 @@ function registerStatsHandlers(router: Router): void {
   // ── 新歌同步（洛雪音源榜单 → 歌单）─────────────────────────────
   router.get('/api/syncnew/boards', async () => {
     try {
-      const hostUrl = await songloft.plugin.getHostUrl();
-      const token = await songloft.plugin.getToken();
-      const resp = await fetch(`${hostUrl}/api/v1/jsplugin/lxmusic/api/leaderboard/boards?source_id=wy`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!resp.ok) throw new Error(`洛雪榜单接口 HTTP ${resp.status}`);
-      const data = (await resp.json()) as { data?: { id: string; name: string }[] };
-      // 排除说唱榜（仅用于排除，不作为收录榜单）
-      const boards = (data?.data || [])
-        .filter((b) => b && b.id && b.id !== 'wy__991319590')
-        .map((b) => ({ id: b.id, name: b.name }));
-      return jsonResponse({ success: true, data: { boards } });
+      const { available, platforms } = await listBoards();
+      return jsonResponse({ success: true, data: { available, platforms } });
     } catch (e) {
       return jsonResponse({ success: false, error: String(e) });
     }

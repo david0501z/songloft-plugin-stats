@@ -18,7 +18,7 @@
   - **AI 标签补全**：LLM 推断缺失的流派/年份并写回曲库，作为标签刮削不到时的兜底。
 - **排除歌单**：推荐（随便听听 / 免切歌精选等）时跳过指定歌单内的歌曲，适合把儿童歌曲、特定场景歌单排除在外。
 - **切歌补位**：快速切歌（播放没几秒就切）后自动挑不同风格歌曲插入播放队列（客户端 `player.insertToQueue`），不阻断切歌，AI 未响应自动回退规则挑选。
-- **新歌同步**：每日定时从洛雪音源插件榜单（新歌榜/飙升榜）拉取新歌，过滤已存在、说唱榜与儿歌关键词后加入指定歌单。
+- **新歌同步**：每日定时从洛雪音源插件榜单拉取新歌（支持网易云/QQ音乐/酷狗/酷我/咪咕，榜单多选），过滤已存在、说唱榜与儿歌关键词后加入指定歌单。**未安装洛雪音源插件时该功能自动隐藏。**
 - **定时推送**：每日定时将昨日统计摘要推送到 飞书 / WxPusher（两平台共用一个推送时间）。
 - **WebDAV 备份**：手动 / 定时备份播放历史到 WebDAV 服务器，支持浏览服务器文件并恢复导入。
 
@@ -143,7 +143,7 @@ songloft-plugin-stats/
 | POST | `/api/skipinsert/diag` | 客户端桥接/插入结果诊断上报 |
 | GET/POST | `/api/syncnew/config` | 新歌同步配置（`enabled`/`limit`/`boards`/`playlistId`/`hour`/`minute`/`excludeRap`/`excludeKids`/`excludeKeywords`） |
 | GET | `/api/syncnew/playlists` | 歌单列表（供目标歌单下拉框） |
-| GET | `/api/syncnew/boards` | 洛雪榜单列表（供榜单多选，排除说唱榜） |
+| GET | `/api/syncnew/boards` | 洛雪榜单列表（多平台分组 `{available, platforms:[{id,name,boards}]}`；`available:false`=未装洛雪插件，前端隐藏该功能；排除各平台说唱榜） |
 | POST | `/api/syncnew/run` | 立即执行一次新歌同步（body `{dryRun}`） |
 
 ### tag 插件联动
