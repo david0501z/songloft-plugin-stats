@@ -352,11 +352,11 @@
         </div>
       </section>
 
-        <!-- 新歌同步：每天定时从洛雪音源榜单拉新歌入歌单 -->
-        <section class="card" style="margin-top:16px;">
+        <!-- 新歌同步：每天定时从洛雪音源榜单拉新歌入歌单（无洛雪插件时整卡隐藏） -->
+        <section class="card" id="syncnewCard" style="margin-top:16px;">
           <div class="card-header">新歌同步</div>
           <div class="card-body">
-            <p class="form-desc">每天定时从洛雪音源插件榜单（新歌榜/飙升榜）拉取新歌，过滤已存在、说唱榜与儿歌关键词后加入指定歌单。定时在插件内运行（与推送/备份同一机制）。</p>
+            <p class="form-desc">每天定时从洛雪音源插件榜单拉取新歌（支持网易云/QQ音乐/酷狗/酷我/咪咕，榜单多选），过滤已存在、说唱榜与儿歌关键词后加入指定歌单。定时在插件内运行（与推送/备份同一机制）。</p>
             <div class="form-group">
               <label class="md-checkbox"><input type="checkbox" id="snEnabled"> 启用每日自动同步</label>
             </div>
