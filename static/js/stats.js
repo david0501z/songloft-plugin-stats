@@ -229,16 +229,12 @@ function renderHistory(records, append) {
         `<li>` +
         `<span class="history-list__song">${escapeHtml(r.artist)} — ${escapeHtml(r.title)}</span>` +
         `<span class="history-list__meta">${formatTime(r.timestamp)} · ${mediaLabel(r.type)} · ${sourceLabel(r.source)}</span>` +
-        `<button class="history-del" data-sid="${r.songId}" data-ts="${r.timestamp}" title="删除这条记录">删除</button>` +
+        `<button class="history-del" data-sid="${r.songId}" data-ts="${r.timestamp}" title="删除这条记录" ` +
+        `onclick="var t=this;if(t.dataset.deleting==='1')return;var api=window.SongloftPlugin&&window.SongloftPlugin.apiPost;if(!api)return;t.dataset.deleting='1';t.disabled=true;t.textContent='…';api('/api/history/delete',{records:[{songId:Number(t.dataset.sid),timestamp:Number(t.dataset.ts)}]}).then(function(r){if(r&&r.success&&r.data&&r.data.deleted>0){var li=t.closest('li');if(li)li.remove();}else{t.disabled=false;t.textContent='删除';delete t.dataset.deleting;}}).catch(function(){t.disabled=false;t.textContent='删除';delete t.dataset.deleting;});return false;">删除</button>` +
         `</li>`,
     )
     .join('');
   el.insertAdjacentHTML('beforeend', html);
-  // 直接绑定删除监听（每次渲染后对新按钮绑定；与其它按钮一致用直接监听）
-  el.querySelectorAll('.history-del:not([data-bound])').forEach((btn) => {
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', () => handleDeleteRecord(btn));
-  });
 }
 
 /** 删除一条播放记录（直接监听，非委托）。data-deleting 防重入（直接+捕获委托双保险） */
@@ -379,17 +375,6 @@ export function initStats() {
 
   // 加载更多
   document.getElementById('btnLoadMore').addEventListener('click', loadMoreHistory);
-
-  // 历史删除兜底：document 捕获相位委托（最早触发、无法被 stopPropagation 拦截；
-  // 直接监听失效时仍能删；data-deleting 防与直接监听重复）
-  document.addEventListener(
-    'click',
-    (e) => {
-      const btn = e.target && e.target.closest ? e.target.closest('.history-del') : null;
-      if (btn) handleDeleteRecord(btn);
-    },
-    true
-  );
 
   // 60 秒轮询
   let timer = setInterval(() => loadData(currentRange, false), 60_000);
