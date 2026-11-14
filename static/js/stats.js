@@ -71,8 +71,12 @@ function showError(message) {
 
 // ── 趋势图与时段分布 ──────────────────────────────────────────────────────────
 
+let trendsSig = '';
 function renderTrends(data) {
   const el = document.getElementById('trendChart');
+  const sig = JSON.stringify(data);
+  if (sig === trendsSig) return; // 内容未变跳过（防轮询闪）
+  trendsSig = sig;
   if (!data.length) {
     el.innerHTML = '<div class="bar-chart__empty">暂无数据</div>';
     return;
@@ -91,8 +95,12 @@ function renderTrends(data) {
     .join('');
 }
 
+let hourlySig = '';
 function renderHourly(data) {
   const el = document.getElementById('hourlyDist');
+  const sig = JSON.stringify(data);
+  if (sig === hourlySig) return; // 内容未变跳过（防轮询闪）
+  hourlySig = sig;
   if (!data.length) {
     el.innerHTML = '<div class="hourly-dist__empty">暂无数据</div>';
     return;
@@ -214,14 +222,23 @@ function renderMediaType(byMediaType) {
     .join('');
 }
 
+let historySig = '';
 function renderHistory(records, append) {
   const el = document.getElementById('historyList');
   if (!append) {
+    // 内容未变则跳过重渲染（轮询每 60s，避免闪）
+    const sig = records.map((r) => `${r.songId}:${r.timestamp}`).join('|');
+    if (sig === historySig) return;
+    historySig = sig;
     if (!records.length) {
       el.innerHTML = '<li class="history-list__empty">暂无播放记录，开始听歌吧</li>';
       return;
     }
     el.innerHTML = '';
+  } else {
+    // 追加：签名扩展为全量
+    const add = records.map((r) => `${r.songId}:${r.timestamp}`).join('|');
+    historySig = (historySig ? historySig + '|' : '') + add;
   }
   const html = records
     .map(
@@ -295,8 +312,9 @@ async function loadMoreHistory() {
 
 // ── 数据请求 ──────────────────────────────────────────────────────────────────
 
-export async function loadData(range, isInitial) {
-  if (!isInitial) showLoading();
+export async function loadData(range, isInitial, opts) {
+  const preserve = !!(opts && opts.preserveHistory);
+  if (!isInitial && !preserve) showLoading();
   const tr = getTimeRange(range);
   const summaryUrl = tr
     ? `/api/stats/summary?from=${tr.from}&to=${tr.to}`
@@ -309,16 +327,17 @@ export async function loadData(range, isInitial) {
     ]);
     if (summary.success) renderSummary(summary.data);
     if (history.success) {
-      renderHistory(history.data.records, false);
-      historyOffset = 0;
       const footer = document.getElementById('historyFooter');
-      if (history.data.hasMore) {
-        footer.style.display = '';
+      if (preserve && historyOffset > 0) {
+        // 用户已点「查看更多」：自动轮询保留已加载列表，不重置回第一页
+        footer.style.display = history.data.hasMore ? '' : 'none';
       } else {
-        footer.style.display = 'none';
+        renderHistory(history.data.records, false);
+        historyOffset = 0;
+        footer.style.display = history.data.hasMore ? '' : 'none';
       }
     }
-    // 趋势和时段：首次加载时获取，后续轮询也被动刷新
+    // 趋势和时段：首次加载时获取，后续轮询也被动刷新（内容未变则不重渲染）
     loadTrends();
     loadHourly();
   } catch (err) {
@@ -376,12 +395,12 @@ export function initStats() {
   // 加载更多
   document.getElementById('btnLoadMore').addEventListener('click', loadMoreHistory);
 
-  // 60 秒轮询
-  let timer = setInterval(() => loadData(currentRange, false), 60_000);
+  // 60 秒轮询（保留已加载历史，不重置；内容未变不重渲染防闪）
+  let timer = setInterval(() => loadData(currentRange, false, { preserveHistory: true }), 60_000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
-      loadData(currentRange, false);
-      timer = setInterval(() => loadData(currentRange, false), 60_000);
+      loadData(currentRange, false, { preserveHistory: true });
+      timer = setInterval(() => loadData(currentRange, false, { preserveHistory: true }), 60_000);
     } else {
       clearInterval(timer);
     }
