@@ -106,6 +106,47 @@ async function lxFetch(path: string): Promise<Record<string, unknown> | unknown[
   return await resp.json();
 }
 
+/**
+ * 通过宿主 HTTP 接口批量创建歌曲并显式归属 lxmusic 音源插件。
+ *
+ * 背景：SDK 的 `songloft.songs.create` 会把歌**自动关联到当前插件**（stats），
+ * 播放时 URL 解析走 `stats music/url`（不存在→404），新歌全播不了。
+ * 宿主 `POST /api/v1/songs/remote` 支持 `plugin_entry_path`，可指定归属 lxmusic，
+ * 让播放 URL 解析路由到洛雪音源插件。
+ */
+async function createSongsViaHost(payloads: CreateSongPayload[]): Promise<Song[]> {
+  if (payloads.length === 0) return [];
+  const hostUrl = await songloft.plugin.getHostUrl();
+  const token = await songloft.plugin.getToken();
+  const resp = await fetch(`${hostUrl}/api/v1/songs/remote`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(
+      payloads.map((p) => ({
+        title: p.title,
+        artist: p.artist,
+        album: p.album,
+        cover_url: p.coverUrl,
+        duration: p.duration,
+        plugin_entry_path: 'lxmusic',
+        source_data: p.sourceData,
+        dedup_key: p.dedupKey,
+        lyric_remote_url: p.lyricRemoteUrl,
+      })),
+    ),
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`songs/remote HTTP ${resp.status}: ${text.slice(0, 300)}`);
+  }
+  const data = (await resp.json()) as { songs?: Song[] } | Song[];
+  const songs = Array.isArray(data) ? data : (data?.songs ?? []);
+  return songs;
+}
+
 async function fetchBoard(boardId: string): Promise<Record<string, unknown>[]> {
   const { source } = parseBoardId(boardId);
   const data = (await lxFetch(
@@ -262,13 +303,17 @@ export async function runSync(opts?: { dryRun?: boolean }): Promise<SyncResult> 
       };
     });
 
-    const created = (await songloft.songs.create(payloads)) as Song[];
+    const created = (await createSongsViaHost(payloads)) as Song[];
     const ids = (created || []).map((s) => s.id).filter((id): id is number => typeof id === 'number');
     if (ids.length > 0 && cfg.playlistId) {
       await songloft.playlists.addSongs(cfg.playlistId, ids);
     }
+    const addedNames = (created || [])
+      .map((s) => `${s.title} - ${s.artist}`)
+      .filter(Boolean)
+      .join(' | ');
     songloft.log.info(
-      `[新歌同步] 入库 ${ids.length} 首 -> 歌单 ${cfg.playlistId} (候选 ${candidates.length}, 跳过 ${candidates.length - pick.length})`,
+      `[新歌同步] 入库 ${ids.length} 首 -> 歌单 ${cfg.playlistId} (候选 ${candidates.length}, 跳过 ${candidates.length - pick.length})${addedNames ? `: ${addedNames}` : ''}`,
     );
     return { ok: true, added: ids.length, skipped: candidates.length - pick.length, candidates: candidates.length };
   } catch (e) {
