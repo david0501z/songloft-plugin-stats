@@ -194,12 +194,62 @@ export async function loadSyncNew() {
     document.getElementById('snExcludeRap').checked = c.excludeRap !== false;
     document.getElementById('snExcludeKids').checked = c.excludeKids !== false;
     document.getElementById('snExcludeKeywords').value = c.excludeKeywords || '';
+    renderExcludeKeywords();
   } catch (e) {
     showToast('新歌同步配置加载失败：' + String(e.message || e), false);
   }
 }
 
 /** 保存"新歌同步"配置 */
+/** 渲染自定义关键词标签列表 */
+function renderExcludeKeywords() {
+  const box = document.getElementById('snExcludeKeywordsList');
+  if (!box) return;
+  const kws = String(document.getElementById('snExcludeKeywords').value || '')
+    .split(/[,，;；]/).map((x) => x.trim()).filter(Boolean);
+  box.innerHTML = '';
+  if (!kws.length) {
+    const empty = document.createElement('span');
+    empty.className = 'sn-kw-empty';
+    empty.textContent = '无自定义关键词';
+    box.appendChild(empty);
+    return;
+  }
+  const delHandler = "var api=window.SongloftPlugin&&window.SongloftPlugin.apiPost;if(!api)return;var kws=(document.getElementById('snExcludeKeywords').value||'').split(/[,，;；]/).map(function(x){return x.trim();}).filter(Boolean);var i=kws.indexOf(this.dataset.kw);if(i>-1)kws.splice(i,1);document.getElementById('snExcludeKeywords').value=kws.join(',');var chip=this.closest('.sn-kw-chip');if(chip)chip.remove();api('/api/syncnew/config',{enabled:document.getElementById('snEnabled').checked,limit:Number(document.getElementById('snLimit').value)||10,playlistId:Number(document.getElementById('snPlaylist').value)||4,hour:Number(document.getElementById('snHour').value)||9,minute:Number(document.getElementById('snMinute').value)||0,boards:Array.from(document.querySelectorAll('#snBoardsList input[type=checkbox]:checked')).map(function(cb){return cb.dataset.board;}).filter(Boolean).join(',')||'wy__3779629,wy__19723756',excludeRap:document.getElementById('snExcludeRap').checked,excludeKids:document.getElementById('snExcludeKids').checked,excludeKeywords:kws.join(',')});return false;";
+  for (const k of kws) {
+    const chip = document.createElement('span');
+    chip.className = 'sn-kw-chip';
+    chip.textContent = k;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'sn-kw-del';
+    del.dataset.kw = k;
+    del.textContent = '×';
+    del.title = '删除';
+    del.setAttribute('onclick', delHandler);
+    chip.appendChild(del);
+    box.appendChild(chip);
+  }
+}
+
+/** 添加自定义关键词（支持逗号分隔多个） */
+function addExcludeKeyword() {
+  const inp = document.getElementById('snExcludeKeywordsInput');
+  const h = document.getElementById('snExcludeKeywords');
+  if (!inp || !h) return;
+  const raw = (inp.value || '').split(/[,，;；]/).map((x) => x.trim()).filter(Boolean);
+  if (!raw.length) return;
+  const kws = (h.value || '').split(/[,，;；]/).map((x) => x.trim()).filter(Boolean);
+  for (const k of raw) {
+    const clean = k.replace(/["'<>]/g, '');
+    if (clean && !kws.includes(clean)) kws.push(clean);
+  }
+  h.value = kws.join(',');
+  inp.value = '';
+  renderExcludeKeywords();
+  saveSyncNew();
+}
+
 async function saveSyncNew() {
   const btn = document.getElementById('btnSaveSyncNew');
   if (!btn) return;
@@ -268,6 +318,12 @@ export function initSyncNew() {
   if (saveBtn) saveBtn.addEventListener('click', saveSyncNew);
   const runBtn = document.getElementById('btnSyncNow');
   if (runBtn) runBtn.addEventListener('click', runSyncNow);
+  const addKwBtn = document.getElementById('btnAddExcludeKeyword');
+  if (addKwBtn) addKwBtn.addEventListener('click', addExcludeKeyword);
+  const addKwInp = document.getElementById('snExcludeKeywordsInput');
+  if (addKwInp) addKwInp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addExcludeKeyword(); }
+  });
 }
 
 // ── 排除歌单 ──────────────────────────────────────────────────────────────────

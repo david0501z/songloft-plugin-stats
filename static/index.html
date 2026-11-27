@@ -385,9 +385,14 @@
               <div style="display:flex;flex-direction:column;gap:6px;">
                 <label class="md-checkbox"><input type="checkbox" id="snExcludeRap"> 说唱榜 + 说唱关键词（说唱/嘻哈不要）</label>
                 <label class="md-checkbox"><input type="checkbox" id="snExcludeKids"> 儿歌关键词（儿歌/童谣/摇篮曲不要）</label>
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <span class="form-desc" style="white-space:nowrap;">自定义关键词（逗号分隔，命中标题即排除）：</span>
-                  <input type="text" id="snExcludeKeywords" class="text-field" placeholder="例如：DJ,翻唱,电音">
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                  <span class="form-desc">自定义关键词（命中标题即排除，可增删）：</span>
+                  <div id="snExcludeKeywordsList" class="sn-kw-list"></div>
+                  <div style="display:flex;gap:8px;">
+                    <input type="text" id="snExcludeKeywordsInput" class="text-field" placeholder="输入关键词后回车或点添加" style="flex:1;min-width:0;">
+                    <button type="button" class="btn-outlined" id="btnAddExcludeKeyword">添加</button>
+                  </div>
+                  <input type="hidden" id="snExcludeKeywords">
                 </div>
               </div>
             </div>
