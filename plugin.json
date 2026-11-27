@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/songloft-org/plugin-toolchain/main/schemas/plugin.schema.json",
   "name": "播放统计",
-  "version": "2026.11.10",
+  "version": "2026.11.27",
   "description": "记录播放历史，统计听歌次数与艺术家排行，支持智能歌单推荐、定时推送听歌报告、WebDAV 备份和定时自动备份",
   "author": "Songloft Team",
   "homepage": "https://github.com/songloft-org/songloft-plugin-stats",
@@ -19,7 +19,7 @@
     "playlists.write"
   ],
   "updateUrl": "https://raw.githubusercontent.com/david0501z/songloft-plugin-stats/main/plugin.json",
-  "download_url": "https://github.com/david0501z/songloft-plugin-stats/releases/download/v2026.11.10/stats.jsplugin.zip",
-  "entryHash": "601aaaa6be44d26761d73d5676ba6d494c4fb3fdfe5495855b3ac87a8b5352b1",
-  "zipHash": "abb3684194cd54d98cfa28c5c19164a639addb584b8cc9aa0049432801be7f4a"
+  "download_url": "https://github.com/david0501z/songloft-plugin-stats/releases/download/v2026.11.27/stats.jsplugin.zip",
+  "entryHash": "26159f8e79d3ca64062a5a1669dbe83ac2fa5a65c4eb1a4c900a67acdb3abbaf",
+  "zipHash": "dd77f7e1d0ce85aa351f08914ed9d7a3bef94501d91caaee2caf18ac70fb57c4"
 }
